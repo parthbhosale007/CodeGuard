@@ -26,10 +26,11 @@ jobs:
         sudo apt-get install -y jq
 
     - name: 📤 Send Code to AI
+      id: ai_step
       run: |
         CODE=$(cat sample-code/test.py | jq -Rs .)
 
-        RESPONSE=$(curl -s -X POST "https:// https://7a61-2409-40c2-101a-c977-c44-fae7-874a-d9d.ngrok-free.app/review" \
+        RESPONSE=$(curl -s -X POST "https://7a61-2409-40c2-101a-c977-c44-fae7-874a-d9d.ngrok-free.app/review" \
           -H "Content-Type: application/json" \
           -d "{\"code\": $CODE}")
 
@@ -38,8 +39,14 @@ jobs:
         SEVERITY=$(echo $RESPONSE | jq -r '.severity')
         ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
 
-        echo "Severity: $SEVERITY"
-        echo "Issues Count: $ISSUES_COUNT"
+        echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
+        echo "issues=$ISSUES_COUNT" >> $GITHUB_OUTPUT
+        echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+
+        if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
+          echo "❌ Invalid AI response. Failing pipeline."
+          exit 1
+        fi
 
         if [ "$SEVERITY" = "critical" ]; then
           echo "❌ Critical issues found. Blocking merge."
@@ -57,20 +64,15 @@ jobs:
           exit 1
         fi
 
-        if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
-          echo "❌ Invalid AI response. Failing pipeline."
-          exit 1
-        fi
-
-            - name: 💬 Comment on PR
+    - name: 💬 Comment on PR
       if: github.event_name == 'pull_request'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
-        COMMENT_BODY+="**Severity:** $SEVERITY\n\n"
-        COMMENT_BODY+="**Issues Found:** $ISSUES_COUNT\n\n"
-        COMMENT_BODY+="\n\n### Suggestions:\n$RESPONSE"
+        COMMENT_BODY+="**Severity:** ${{ steps.ai_step.outputs.severity }}\n\n"
+        COMMENT_BODY+="**Issues Found:** ${{ steps.ai_step.outputs.issues }}\n\n"
+        COMMENT_BODY+="### Full Response:\n${{ steps.ai_step.outputs.response }}"
 
         curl -s -H "Authorization: token $GITHUB_TOKEN" \
           -H "Content-Type: application/json" \
