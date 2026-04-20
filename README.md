@@ -14,7 +14,6 @@ CodeGuard is an AI-integrated CI/CD system that automatically reviews code, dete
 * Python (FastAPI)
 * GitHub Actions
 * OpenAI API (LLM)
-* Docker (optional)
 
 ## 🎯 Goal
 
