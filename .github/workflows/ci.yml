@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  code-review:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +21,59 @@ jobs:
 
     - name: 📦 Install Dependencies
       run: |
-        pip install -r ai-service/requirements.txt
+        pip install requests
+        sudo apt-get update
+        sudo apt-get install -y jq
 
-    - name: ✅ Run Basic Test
+    - name: 📤 Send Code to AI
       run: |
-        echo "CodeGuard CI is running successfully 🚀"
+        CODE=$(cat sample-code/test.py | jq -Rs .)
+
+        RESPONSE=$(curl -s -X POST "https:// https://7a61-2409-40c2-101a-c977-c44-fae7-874a-d9d.ngrok-free.app/review" \
+          -H "Content-Type: application/json" \
+          -d "{\"code\": $CODE}")
+
+        echo "Response: $RESPONSE"
+
+        SEVERITY=$(echo $RESPONSE | jq -r '.severity')
+        ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
+
+        echo "Severity: $SEVERITY"
+        echo "Issues Count: $ISSUES_COUNT"
+
+        if [ "$SEVERITY" = "critical" ]; then
+          echo "❌ Critical issues found. Blocking merge."
+          exit 1
+
+        elif [ "$SEVERITY" = "high" ]; then
+          echo "⚠️ High severity issues found. Proceed with caution."
+
+        else
+          echo "✅ Code acceptable."
+        fi
+
+        if [ "$ISSUES_COUNT" -gt 5 ]; then
+          echo "❌ Too many issues. Failing pipeline."
+          exit 1
+        fi
+
+        if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
+          echo "❌ Invalid AI response. Failing pipeline."
+          exit 1
+        fi
+
+            - name: 💬 Comment on PR
+      if: github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
+        COMMENT_BODY+="**Severity:** $SEVERITY\n\n"
+        COMMENT_BODY+="**Issues Found:** $ISSUES_COUNT\n\n"
+        COMMENT_BODY+="\n\n### Suggestions:\n$RESPONSE"
+
+        curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          -X POST \
+          -d "{\"body\": \"$COMMENT_BODY\"}" \
+          https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
