@@ -10,26 +10,31 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 def analyze_code(code: str):
     try: 
         prompt = f"""
-You are a senior software engineer and security expert.
+You are an expert AI code reviewer specializing in security and code quality.
 
-Analyze the following code and classify issues.
- 
-Return STRICT JSON:
+Analyze the following project code and return a STRICT JSON response.
 
+IMPORTANT:
+- Always return JSON
+- Do NOT return plain text
+- Even if no issues found, still return structured output
+
+Format:
 {{
   "severity": "low | medium | high | critical",
-  "issues": [],
-  "security": [],
-  "suggestions": []
+  "issues": ["..."],
+  "security": ["..."],
+  "suggestions": ["..."]
 }}
 
 Rules:
-- critical → security breach, secrets, major vulnerabilities
-- high → serious bug or bad practice
-- medium → moderate issue
-- low → minor improvement
+- If code is large, summarize key findings
+- Focus on real risks (SQL injection, secrets, auth, etc.)
+- If no major issues → severity = "low"
+- NEVER return empty response
+- NEVER say "no structured output"
 
-Code:
+CODE:
 {code}
 """
 
