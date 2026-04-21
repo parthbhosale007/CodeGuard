@@ -30,7 +30,7 @@ jobs:
       run: |
         CODE=$(cat sample-code/test.py | jq -Rs .)
 
-        RESPONSE=$(curl -s -X POST "https://7a61-2409-40c2-101a-c977-c44-fae7-874a-d9d.ngrok-free.app/review" \
+        RESPONSE=$(curl -s -X POST "https://codeguard-qid9.onrender.com/review" \
           -H "Content-Type: application/json" \
           -d "{\"code\": $CODE}")
 
