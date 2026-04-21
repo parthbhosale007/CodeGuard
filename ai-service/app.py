@@ -8,45 +8,42 @@ import requests
 import requests
 
 def fetch_repo_code(repo_url):
+    import requests
+
     try:
-        # ✅ Clean URL
         repo_url = repo_url.strip().replace("https://github.com/", "")
         parts = repo_url.split("/")
-
-        if len(parts) < 2:
-            return "Invalid GitHub URL"
 
         owner = parts[0]
         repo = parts[1]
 
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents"
-
-        response = requests.get(api_url)
-
-        # ✅ Handle GitHub errors
-        if response.status_code != 200:
-            return f"GitHub API error: {response.status_code}"
-
-        files = response.json()
-
-        # ✅ Ensure it's a list
-        if not isinstance(files, list):
-            return "Unexpected GitHub response"
-
         code = ""
 
-        for file in files:
-            if file.get("type") == "file":
-                if file["name"].endswith((".py", ".js", ".cpp")):
-                    raw_res = requests.get(file["download_url"])
+        def fetch_dir(path=""):
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+            res = requests.get(api_url)
 
-                    if raw_res.status_code == 200:
-                        code += f"\n\nFile: {file['name']}\n{raw_res.text}"
+            if res.status_code != 200:
+                return
 
-        return code if code else "No valid code files found"
+            items = res.json()
+
+            for item in items:
+                if item["type"] == "file":
+                    if item["name"].endswith((".py", ".js", ".cpp", ".ts", ".html", ".css", ".json")):
+                        raw = requests.get(item["download_url"]).text
+                        nonlocal code
+                        code += f"\n\nFile: {item['path']}\n{raw[:2000]}"
+                
+                elif item["type"] == "dir":
+                    fetch_dir(item["path"])
+
+        fetch_dir()
+
+        return code if code else "No valid code found"
 
     except Exception as e:
-        return f"Error fetching repo: {str(e)}"
+        return f"Error: {str(e)}"
 
 app = FastAPI()
 
