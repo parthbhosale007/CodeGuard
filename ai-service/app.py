@@ -30,7 +30,9 @@ def fetch_repo_code(repo_url):
 
             for item in items:
                 if item["type"] == "file":
-                    if item["name"].endswith((".py", ".js", ".cpp", ".ts", ".html", ".css", ".json")):
+                    if any(skip in item["path"].lower() for skip in ["node_modules", ".git", "dist", "build"]):
+                         continue
+                    if item["name"].endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".cs", ".html", ".css", ".json",".go", ".rs", ".php")):
                         raw = requests.get(item["download_url"]).text
                         nonlocal code
                         code += f"\n\nFile: {item['path']}\n{raw[:2000]}"
@@ -69,16 +71,34 @@ def home():
 def review_code(req: CodeRequest):
     return analyze_code(req.code)
 
+# @app.post("/review-repo")
+# def review_repo(req: RepoRequest):
+#     try:
+#         code = fetch_repo_code(req.repo_url)
+
+#         # If error string → return directly
+#         if code.startswith("Error") or code.startswith("GitHub") or code.startswith("Invalid"):
+#             return {"error": code}
+
+#         return analyze_code(code)
+
+#     except Exception as e:
+#         return {"error": str(e)}
+
 @app.post("/review-repo")
 def review_repo(req: RepoRequest):
-    try:
-        code = fetch_repo_code(req.repo_url)
+    code = fetch_repo_code(req.repo_url)
 
-        # If error string → return directly
-        if code.startswith("Error") or code.startswith("GitHub") or code.startswith("Invalid"):
-            return {"error": code}
+    print("===== DEBUG CODE LENGTH =====")
+    print(len(code))
+    print("=============================")
 
-        return analyze_code(code)
+    if not code or len(code.strip()) < 50:
+        return {
+            "severity": "low",
+            "issues": ["No code fetched from repository"],
+            "security": ["Unable to analyze repository contents"],
+            "suggestions": ["Ensure repository contains supported code files"]
+        }
 
-    except Exception as e:
-        return {"error": str(e)}
+    return analyze_code(code)
