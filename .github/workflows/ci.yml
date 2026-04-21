@@ -28,8 +28,24 @@ jobs:
     - name: 📤 Send Code to AI
       id: ai_step
       run: |
-        CODE=$(cat sample-code/test.py | jq -Rs .)
+        git fetch origin main
 
+        CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+        echo "Changed files:"
+        echo "$CHANGED_FILES"
+
+        CODE=""
+        for file in $CHANGED_FILES; do
+         if [[ -f "$file" ]]; then
+           echo "Reading $file"
+           CONTENT=$(cat "$file")
+           CODE="$CODE\n\nFile: $file\n$CONTENT"
+         fi
+        done
+
+        CODE_JSON=$(echo "$CODE" | jq -Rs .)
+  
         RESPONSE=$(curl -s -X POST "https://codeguard-qid9.onrender.com/review" \
           -H "Content-Type: application/json" \
           -d "{\"code\": $CODE}")
