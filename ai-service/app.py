@@ -5,7 +5,6 @@ from reviewer import analyze_code
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 
-import requests
 
 def fetch_repo_code(repo_url):
     import requests
@@ -21,7 +20,10 @@ def fetch_repo_code(repo_url):
 
         def fetch_dir(path=""):
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-            res = requests.get(api_url)
+            headers = {
+                   "User-Agent": "CodeGuard-App"
+            }
+            res = requests.get(api_url , headers=headers)
 
             if res.status_code != 200:
                 return
@@ -33,7 +35,7 @@ def fetch_repo_code(repo_url):
                     if any(skip in item["path"].lower() for skip in ["node_modules", ".git", "dist", "build"]):
                          continue
                     if item["name"].endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".cs", ".html", ".css", ".json",".go", ".rs", ".php")):
-                        raw = requests.get(item["download_url"]).text
+                        raw = requests.get(item["download_url"] , headers=headers).text
                         nonlocal code
                         code += f"\n\nFile: {item['path']}\n{raw[:2000]}"
                 
