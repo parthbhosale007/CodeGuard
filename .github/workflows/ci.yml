@@ -2,80 +2,115 @@ name: CodeGuard CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   code-review:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-    - name: 📥 Checkout Code
-      uses: actions/checkout@v3
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v3
 
-    - name: 🐍 Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
-    - name: 📦 Install Dependencies
-      run: |
-        pip install requests
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: 📦 Install Dependencies
+        run: |
+          pip install requests
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-    - name: 📤 Send Code to AI
-      id: ai_step
-      run: |
-        CODE=$(cat sample-code/test.py | jq -Rs .)
+      - name: 📤 Analyze PR Changes
+        id: ai_step
+        run: |
+          git fetch origin main
 
-        RESPONSE=$(curl -s -X POST "https://7a61-2409-40c2-101a-c977-c44-fae7-874a-d9d.ngrok-free.app/review" \
-          -H "Content-Type: application/json" \
-          -d "{\"code\": $CODE}")
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
 
-        echo "Response: $RESPONSE"
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
 
-        SEVERITY=$(echo $RESPONSE | jq -r '.severity')
-        ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
+          CODE=""
+          for file in $CHANGED_FILES; do
+            if [[ -f "$file" ]]; then
+              # Only analyze code files (IMPORTANT)
+              if [[ "$file" == *.py || "$file" == *.js || "$file" == *.cpp ]]; then
+                echo "Reading $file"
+                CONTENT=$(cat "$file")
+                CODE="$CODE\n\nFile: $file\n$CONTENT"
+              fi
+            fi
+          done
 
-        echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
-        echo "issues=$ISSUES_COUNT" >> $GITHUB_OUTPUT
-        echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+          if [ -z "$CODE" ]; then
+            echo "No valid code files changed. Skipping."
+            echo "severity=low" >> $GITHUB_OUTPUT
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "response=No code changes" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-        if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
-          echo "❌ Invalid AI response. Failing pipeline."
-          exit 1
-        fi
+          CODE_JSON=$(echo "$CODE" | jq -Rs .)
 
-        if [ "$SEVERITY" = "critical" ]; then
-          echo "❌ Critical issues found. Blocking merge."
-          exit 1
+          RESPONSE=$(curl -s -X POST "https://YOUR_NGROK_URL/review" \
+            -H "Content-Type: application/json" \
+            -d "{\"code\": $CODE_JSON}")
 
-        elif [ "$SEVERITY" = "high" ]; then
-          echo "⚠️ High severity issues found. Proceed with caution."
+          echo "Response: $RESPONSE"
 
-        else
-          echo "✅ Code acceptable."
-        fi
+          # Validate JSON response
+          if ! echo "$RESPONSE" | jq . > /dev/null 2>&1; then
+            echo "❌ Invalid response from AI service"
+            exit 1
+          fi
 
-        if [ "$ISSUES_COUNT" -gt 5 ]; then
-          echo "❌ Too many issues. Failing pipeline."
-          exit 1
-        fi
+          SEVERITY=$(echo $RESPONSE | jq -r '.severity')
+          ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
 
-    - name: 💬 Comment on PR
-      if: github.event_name == 'pull_request'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
-        COMMENT_BODY+="**Severity:** ${{ steps.ai_step.outputs.severity }}\n\n"
-        COMMENT_BODY+="**Issues Found:** ${{ steps.ai_step.outputs.issues }}\n\n"
-        COMMENT_BODY+="### Full Response:\n${{ steps.ai_step.outputs.response }}"
+          echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
+          echo "issues=$ISSUES_COUNT" >> $GITHUB_OUTPUT
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
 
-        curl -s -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          -X POST \
-          -d "{\"body\": \"$COMMENT_BODY\"}" \
-          https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
+          if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
+            echo "❌ Invalid AI response. Failing pipeline."
+            exit 1
+          fi
+
+          if [ "$SEVERITY" = "critical" ]; then
+            echo "❌ Critical issues found. Blocking merge."
+            exit 1
+          elif [ "$SEVERITY" = "high" ]; then
+            echo "⚠️ High severity issues found."
+          else
+            echo "✅ Code acceptable."
+          fi
+
+          if [ "$ISSUES_COUNT" -gt 5 ]; then
+            echo "❌ Too many issues. Failing pipeline."
+            exit 1
+          fi
+
+      - name: 💬 Comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
+          COMMENT_BODY+="**Severity:** ${{ steps.ai_step.outputs.severity }}\n\n"
+          COMMENT_BODY+="**Issues Found:** ${{ steps.ai_step.outputs.issues }}\n\n"
+          COMMENT_BODY+="### Full Response:\n${{ steps.ai_step.outputs.response }}"
+
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"body\": \"$COMMENT_BODY\"}" \
+            https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
