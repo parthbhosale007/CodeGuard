@@ -13,7 +13,7 @@ def analyze_code(code: str):
 You are a senior software engineer and security expert.
 
 Analyze the following code and classify issues.
-
+ 
 Return STRICT JSON:
 
 {{

@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from reviewer import analyze_code
@@ -9,9 +10,8 @@ class CodeRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"message": "CodeGuard AI Service Running 🚀"}
+    return {"message": "CodeGuard API Running 🚀"}
 
 @app.post("/review")
 def review_code(req: CodeRequest):
-    result = analyze_code(req.code)
-    return result
+    return analyze_code(req.code)
