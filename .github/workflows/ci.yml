@@ -13,6 +13,8 @@ jobs:
     steps:
     - name: 📥 Checkout Code
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
     - name: 🐍 Setup Python
       uses: actions/setup-python@v4
@@ -28,11 +30,13 @@ jobs:
     - name: 📤 Send Code to AI
       id: ai_step
       run: |
-        git fetch origin main
+       git fetch origin main
 
-        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+       BASE=$(git merge-base origin/main HEAD)
 
-        echo "Changed files:"
+       CHANGED_FILES=$(git diff --name-only $BASE HEAD)
+
+       echo "Changed files:"
         echo "$CHANGED_FILES"
 
         CODE=""
