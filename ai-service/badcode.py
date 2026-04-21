@@ -8,6 +8,7 @@ def p(x):
         else:
             y -= 1
     print("Result is: " + str(y))
-
+password = "Parth1243"
+print(password)
 l = [12, 15, -2, 5, 8]
 p(l)
