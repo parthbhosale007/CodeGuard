@@ -52,7 +52,7 @@ CODE:
 """
 
         response = client.chat.completions.create(
-            model="llama3-70b-8192",   # ✅ valid Groq-hosted model
+            model="openai/gpt-oss-120b",   # ✅ valid Groq-hosted model
             messages=[
                 {"role": "user", "content": prompt}
             ],
