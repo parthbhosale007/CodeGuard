@@ -87,13 +87,52 @@
 
     /* ── Header ─────────────────────────────────────────────────── */
     header {
-      padding: 40px 0 36px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 40px 0 0;
       border-bottom: 1px solid var(--border);
       margin-bottom: 40px;
     }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 28px;
+    }
+
+    /* ── Nav tabs ────────────────────────────────────────────────── */
+    nav { display: flex; gap: 2px; align-items: flex-end; }
+
+    .nav-tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 9px 18px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: .3px;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      transition: all var(--transition);
+    }
+
+    .nav-tab:hover:not(.active) {
+      color: var(--text);
+      background: rgba(255,255,255,.04);
+      border-color: var(--border);
+    }
+
+    .nav-tab.active {
+      color: var(--accent);
+      background: var(--card);
+      border-color: var(--border);
+      position: relative;
+      margin-bottom: -1px;
+      padding-bottom: 10px;
+    }
+
+    /* keep original flex-row for the brand+badge row */
 
     .brand { display: flex; align-items: center; gap: 14px; }
 
@@ -552,14 +591,20 @@
 
     <!-- Header -->
     <header>
-      <div class="brand">
-        <div class="brand-icon">🛡️</div>
-        <div class="brand-text">
-          <h1>CodeGuard</h1>
-          <span>AI-powered CI/CD Code Review Tool</span>
+      <div class="header-top">
+        <div class="brand">
+          <div class="brand-icon">🛡️</div>
+          <div class="brand-text">
+            <h1>CodeGuard</h1>
+            <span>AI-powered CI/CD Code Review Tool</span>
+          </div>
         </div>
+        <div class="header-badge">Model Active</div>
       </div>
-      <div class="header-badge">Model Active</div>
+      <nav>
+        <a class="nav-tab active" href="index.html"><span>⚡</span> Code Analyzer</a>
+        <a class="nav-tab" href="repo.html"><span>🐙</span> Repo Analyzer</a>
+      </nav>
     </header>
 
     <!-- Two-column workspace -->
