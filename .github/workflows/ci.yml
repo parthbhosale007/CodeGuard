@@ -2,101 +2,129 @@ name: CodeGuard CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   code-review:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-    - name: 📥 Checkout Code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0   # IMPORTANT for git diff
 
-    - name: 🐍 Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: 📦 Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-    - name: 📦 Install Dependencies
-      run: |
-        pip install requests
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: 📤 Analyze PR Changes
+        id: ai_step
+        run: |
+          git fetch origin main
 
-    - name: 📤 Send Code to AI
-      id: ai_step
-      run: |
-       git fetch origin main
+          BASE=$(git merge-base origin/main HEAD)
+          CHANGED_FILES=$(git diff --name-only $BASE HEAD)
 
-       BASE=$(git merge-base origin/main HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
 
-       CHANGED_FILES=$(git diff --name-only $BASE HEAD)
+          # ✅ Handle no changes
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed"
+            echo "severity=low" >> $GITHUB_OUTPUT
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "response=No changes detected" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-       echo "Changed files:"
-        echo "$CHANGED_FILES"
+          CODE=""
+          for file in $CHANGED_FILES; do
+            if [[ -f "$file" ]]; then
+              # ✅ Only analyze code files
+              if [[ "$file" == *.py || "$file" == *.js || "$file" == *.cpp ]]; then
+                echo "Reading $file"
+                CONTENT=$(cat "$file")
+                CODE="$CODE\n\nFile: $file\n$CONTENT"
+              fi
+            fi
+          done
 
-        CODE=""
-        for file in $CHANGED_FILES; do
-         if [[ -f "$file" ]]; then
-           echo "Reading $file"
-           CONTENT=$(cat "$file")
-           CODE="$CODE\n\nFile: $file\n$CONTENT"
-         fi
-        done
+          # ✅ Handle no valid code files
+          if [ -z "$CODE" ]; then
+            echo "No valid code files found"
+            echo "severity=low" >> $GITHUB_OUTPUT
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "response=No code files to analyze" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-        CODE_JSON=$(echo "$CODE" | jq -Rs .)
-        DATA=$(jq -n --arg code "$CODE" '{code: $code}')
-  
-        RESPONSE=$(curl -s -X POST "https://codeguard-qid9.onrender.com/review" \
-               -H "Content-Type: application/json" \
-               -d "$DATA")
+          # ✅ Safe JSON creation
+          DATA=$(jq -n --arg code "$CODE" '{code: $code}')
 
-        echo "Response: $RESPONSE"
+          echo "Sending payload..."
+          echo "$DATA"
 
-        SEVERITY=$(echo $RESPONSE | jq -r '.severity')
-        ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
+          RESPONSE=$(curl -s -X POST "https://codeguard-qid9.onrender.com/review" \
+            -H "Content-Type: application/json" \
+            -d "$DATA")
 
-        echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
-        echo "issues=$ISSUES_COUNT" >> $GITHUB_OUTPUT
-        echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+          echo "Response: $RESPONSE"
 
-        if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
-          echo "❌ Invalid AI response. Failing pipeline."
-          exit 1
-        fi
+          # ✅ Validate JSON response
+          if ! echo "$RESPONSE" | jq . > /dev/null 2>&1; then
+            echo "❌ Invalid JSON response from API"
+            echo "$RESPONSE"
+            exit 1
+          fi
 
-        if [ "$SEVERITY" = "critical" ]; then
-          echo "❌ Critical issues found. Blocking merge."
-          exit 1
+          SEVERITY=$(echo $RESPONSE | jq -r '.severity')
+          ISSUES_COUNT=$(echo $RESPONSE | jq '.issues | length')
 
-        elif [ "$SEVERITY" = "high" ]; then
-          echo "⚠️ High severity issues found. Proceed with caution."
+          echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
+          echo "issues=$ISSUES_COUNT" >> $GITHUB_OUTPUT
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
 
-        else
-          echo "✅ Code acceptable."
-        fi
+          # ✅ Safety check
+          if [ -z "$SEVERITY" ] || [ "$SEVERITY" = "null" ]; then
+            echo "❌ Invalid AI response"
+            exit 1
+          fi
 
-        if [ "$ISSUES_COUNT" -gt 5 ]; then
-          echo "❌ Too many issues. Failing pipeline."
-          exit 1
-        fi
+          # ✅ Decision logic
+          if [ "$SEVERITY" = "critical" ]; then
+            echo "❌ Critical issues found. Blocking merge."
+            exit 1
+          elif [ "$SEVERITY" = "high" ]; then
+            echo "⚠️ High severity issues found."
+          else
+            echo "✅ Code acceptable."
+          fi
 
-    - name: 💬 Comment on PR
-      if: github.event_name == 'pull_request'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
-        COMMENT_BODY+="**Severity:** ${{ steps.ai_step.outputs.severity }}\n\n"
-        COMMENT_BODY+="**Issues Found:** ${{ steps.ai_step.outputs.issues }}\n\n"
-        COMMENT_BODY+="### Full Response:\n${{ steps.ai_step.outputs.response }}"
+          if [ "$ISSUES_COUNT" -gt 5 ]; then
+            echo "❌ Too many issues. Failing pipeline."
+            exit 1
+          fi
 
-        curl -s -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          -X POST \
-          -d "{\"body\": \"$COMMENT_BODY\"}" \
-          https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
+      - name: 💬 Comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMENT_BODY="### 🔍 CodeGuard Analysis\n\n"
+          COMMENT_BODY+="**Severity:** ${{ steps.ai_step.outputs.severity }}\n\n"
+          COMMENT_BODY+="**Issues Found:** ${{ steps.ai_step.outputs.issues }}\n\n"
+          COMMENT_BODY+="### Full Response:\n${{ steps.ai_step.outputs.response }}"
+
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"body\": \"$COMMENT_BODY\"}" \
+            https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
