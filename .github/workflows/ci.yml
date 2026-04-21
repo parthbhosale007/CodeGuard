@@ -45,10 +45,11 @@ jobs:
         done
 
         CODE_JSON=$(echo "$CODE" | jq -Rs .)
+        DATA=$(jq -n --arg code "$CODE" '{code: $code}')
   
         RESPONSE=$(curl -s -X POST "https://codeguard-qid9.onrender.com/review" \
-          -H "Content-Type: application/json" \
-          -d "{\"code\": $CODE_JSON}"
+               -H "Content-Type: application/json" \
+               -d "$DATA")
 
         echo "Response: $RESPONSE"
 
